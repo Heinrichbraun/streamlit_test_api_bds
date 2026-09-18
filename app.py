@@ -105,23 +105,18 @@ else:
         if laureates:
             for laureate in laureates:
                 name = laureate.get("knownName", {}).get("en") or laureate.get("orgName", {}).get("en") or "Unknown Winner"
-                # "portion" tells us how the prize money/credit was split for this
-                # laureate, e.g. "1/1" (solo), "1/2", "1/3", "1/4" (shared).
-                portion = laureate.get("portion", "")
                 records.append({
                     "Year": year,
                     "Decade": decade,
                     "Category": category_name,
-                    "Winner": name,
-                    "Portion": portion
+                    "Winner": name
                 })
         else:
             records.append({
                 "Year": year,
                 "Decade": decade,
                 "Category": category_name,
-                "Winner": "Not Awarded",
-                "Portion": ""
+                "Winner": "Not Awarded"
             })
 
     # Create main DataFrame
@@ -162,7 +157,7 @@ else:
 
         # Quick stat cards summarizing the current filtered selection
         if not df_winners.empty:
-            stat1, stat2, stat3, stat4 = st.columns(4)
+            stat1, stat2, stat3 = st.columns(3)
 
             with stat1:
                 st.metric("Total Laureates", f"{len(df_winners):,}")
@@ -175,12 +170,8 @@ else:
                 top_decade = df_winners["Decade"].value_counts().idxmax()
                 st.metric("Most Awarded Decade", f"{int(top_decade)}s")
 
-            with stat4:
-                shared_pct = (df_winners["Portion"] != "1/1").mean() * 100 if (df_winners["Portion"] != "").any() else 0
-                st.metric("Shared Prizes", f"{shared_pct:.0f}%")
-
             # CSV download of exactly what's currently filtered/shown
-            csv_bytes = df_winners.drop(columns=["Portion"]).to_csv(index=False).encode("utf-8")
+            csv_bytes = df_winners.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="⬇️ Download filtered data as CSV",
                 data=csv_bytes,
@@ -231,32 +222,15 @@ else:
             yearly_counts = yearly_counts.sort_values(by="Year", ascending=True)
             st.line_chart(data=yearly_counts, x="Year", y="Winners", use_container_width=True)
 
-            chart_col, table_col = st.columns(2)
-
-            with chart_col:
-                st.subheader("🤝 Solo vs. Shared Prizes Over Time")
-                portion_df = df_winners[df_winners["Portion"] != ""].copy()
-                if portion_df.empty:
-                    st.info("No prize-sharing data available for this selection.")
-                else:
-                    portion_df["Shared"] = portion_df["Portion"] != "1/1"
-                    shared_by_decade = portion_df.groupby("Decade")["Shared"].mean().reset_index()
-                    shared_by_decade["Shared (%)"] = (shared_by_decade["Shared"] * 100).round(1)
-                    shared_by_decade["Decade Label"] = shared_by_decade["Decade"].astype(str) + "s"
-                    shared_by_decade = shared_by_decade.sort_values(by="Decade")
-                    st.line_chart(data=shared_by_decade, x="Decade Label", y="Shared (%)", use_container_width=True)
-                    st.caption("Percentage of prizes split between two or more laureates, by decade.")
-
-            with table_col:
-                st.subheader("🏆 Repeat Winners")
-                repeat_counts = df_winners["Winner"].value_counts()
-                repeat_counts = repeat_counts[repeat_counts > 1].reset_index()
-                repeat_counts.columns = ["Winner", "Prizes Won"]
-                if repeat_counts.empty:
-                    st.info("No repeat winners in the current selection.")
-                else:
-                    st.dataframe(repeat_counts, use_container_width=True, hide_index=True)
-                    st.caption("Laureates or organizations who won more than once within your current filters.")
+            st.subheader("🏆 Repeat Winners")
+            repeat_counts = df_winners["Winner"].value_counts()
+            repeat_counts = repeat_counts[repeat_counts > 1].reset_index()
+            repeat_counts.columns = ["Winner", "Prizes Won"]
+            if repeat_counts.empty:
+                st.info("No repeat winners in the current selection.")
+            else:
+                st.dataframe(repeat_counts, use_container_width=True, hide_index=True)
+                st.caption("Laureates or organizations who won more than once within your current filters.")
 
         # Section 4: Explanation & Limitations
         exp_col1, exp_col2 = st.columns(2)
@@ -266,7 +240,6 @@ else:
             **💡 What these visualizations show:**  
             - **Decade & Line Charts:** Show historical progression. Notice the increase in winners sharing prizes in modern decades, along with drops during World War I and World War II.
             - **Category Distribution:** Displays the total recipient counts. Economic Sciences has fewer total laureates because it was added later in 1969.
-            - **Solo vs. Shared:** Tracks whether prizes are increasingly split between multiple laureates over time.
             - **Repeat Winners:** Highlights laureates or organizations awarded more than once within your current filters (e.g. Marie Curie, the ICRC).
             - **Time Period filter:** Narrow every chart above down to a specific award-year range.
             """)
@@ -276,8 +249,7 @@ else:
             **⚠️ Data Limitations:**  
             - World Wars (1914–1918 and 1939–1945) caused Nobel Prizes to be canceled in some years, resulting in temporary zeroes in timeline data.
             - The official [Nobel Prize API](https://www.nobelprize.org/about/developer-zone-2/) caps single request sizes; the app pages through results to retrieve all available historical prizes.
-            - The "Shared Prizes" metric and chart rely on each laureate's "portion" field; a small number of older records may lack this field and are excluded from that calculation.
-            - Repeat-winner and shared-prize stats only reflect whatever category/time filters are currently applied, not the full historical dataset.
+            - Repeat-winner stats only reflect whatever category/time filters are currently applied, not the full historical dataset.
             """)
 
         # Section 5: Inspect Cleaned Data Table
