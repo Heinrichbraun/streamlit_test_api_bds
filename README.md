@@ -45,12 +45,11 @@ streamlit run nobel_app.py
 
 ## Live app
 
-[Add your deployed Streamlit Cloud URL here]
+https://apptestapibds-pvmuytpc7dz5dup4vvxasq.streamlit.app/
 
-## Repository / video
+## Repository
 
 - Repository: [Add your GitHub repo link here]
-- Demo video: [Add your video link here]
 
 ## AI tools used
 
@@ -59,8 +58,6 @@ Claude (Anthropic) was used to:
 - Add pagination so the app reliably fetches the full dataset instead of relying on an unverified single-request `limit`
 - Add the time-period filter and rework the category chart so it only renders when it's meaningful (i.e. when comparing across categories)
 - Draft this README
-
-*(Edit this section to reflect exactly what your group used and how, per the assignment instructions.)*
 
 ## Notes
 
