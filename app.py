@@ -167,7 +167,9 @@ else:
 
             def apply_preset():
                 picked = st.session_state[quick_key]
-                if picked in preset_map:
+                if picked == "Custom / All Years":
+                    st.session_state[slider_key] = (min_year, max_year)
+                elif picked in preset_map:
                     st.session_state[slider_key] = preset_map[picked]
 
             st.sidebar.selectbox(
