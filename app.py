@@ -1,12 +1,6 @@
 import requests
 
 def fetch_nobel_prizes(year=None, category=None, limit=5):
-    """
-    Fetches Nobel Prize data from the public v2.1 API.
-    
-    Categories: 'phy' (Physics), 'che' (Chemistry), 'med' (Medicine),
-                 'lit' (Literature), 'pea' (Peace), 'eco' (Economics)
-    """
     base_url = "https://api.nobelprize.org/2.1/nobelPrizes"
     
     # Build query parameters
