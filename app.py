@@ -104,88 +104,146 @@ else:
 
         if laureates:
             for laureate in laureates:
+                is_org = bool(laureate.get("orgName"))
                 name = laureate.get("knownName", {}).get("en") or laureate.get("orgName", {}).get("en") or "Unknown Winner"
+
+                # Gender only applies to individual people. Organisations (e.g.
+                # the Red Cross, UN agencies) are labeled separately, and any
+                # person record missing a gender value is labeled "Unknown"
+                # rather than guessed at.
+                if is_org:
+                    gender_label = "Organization"
+                else:
+                    gender_raw = (laureate.get("gender") or "").strip().lower()
+                    if gender_raw == "male":
+                        gender_label = "Male"
+                    elif gender_raw == "female":
+                        gender_label = "Female"
+                    else:
+                        gender_label = "Unknown"
+
                 records.append({
                     "Year": year,
                     "Decade": decade,
                     "Category": category_name,
-                    "Winner": name
+                    "Winner": name,
+                    "Gender": gender_label
                 })
         else:
             records.append({
                 "Year": year,
                 "Decade": decade,
                 "Category": category_name,
-                "Winner": "Not Awarded"
+                "Winner": "Not Awarded",
+                "Gender": "N/A"
             })
 
     # Create main DataFrame
     df = pd.DataFrame(records)
 
-    # Filter out unawarded entries and invalid years for clean counts
-    df_winners = df[(df["Winner"] != "Not Awarded") & (df["Year"] > 0)]
+    # Base pool of real winners (excludes "Not Awarded" placeholder rows and
+    # any record we couldn't assign a valid year to)
+    df_winners_all = df[(df["Winner"] != "Not Awarded") & (df["Year"] > 0)]
 
-    # Debug helper: lets you confirm whether the API actually returned the
-    # full dataset or something suspiciously small.
-    st.caption(f"Fetched {len(prizes_data)} prize record(s) covering {df_winners['Winner'].shape[0]} laureate entries.")
+    if df_winners_all.empty:
+        st.warning("⚠️ No laureate data available to filter or chart for this selection.")
+    else:
+        # --- New filters: Gender and Time Period -----------------------------
+        st.sidebar.subheader("Refine Results")
 
-    # Section 3: Visualizations
-    st.markdown(f"### 📊 Analysis for: **{selected_category_name}**")
+        available_genders = sorted(df_winners_all["Gender"].unique().tolist())
+        selected_genders = st.sidebar.multiselect(
+            "Filter by Gender",
+            options=available_genders,
+            default=available_genders
+        )
 
-    if selected_code == "all":
-        # The category comparison chart only makes sense when we actually
-        # have more than one category to compare -- which is only the case
-        # in "All Categories" mode. Filtering to a single category first,
-        # then charting "categories", would just draw one lonely bar.
-        col1, col2 = st.columns(2)
+        min_year = int(df_winners_all["Year"].min())
+        max_year = int(df_winners_all["Year"].max())
+        if min_year == max_year:
+            selected_year_range = (min_year, max_year)
+            st.sidebar.caption(f"Only one award year ({min_year}) available for this selection.")
+        else:
+            selected_year_range = st.sidebar.slider(
+                "Filter by Time Period (Award Year)",
+                min_value=min_year,
+                max_value=max_year,
+                value=(min_year, max_year)
+            )
 
-        with col1:
+        df_winners = df_winners_all[
+            (df_winners_all["Gender"].isin(selected_genders)) &
+            (df_winners_all["Year"] >= selected_year_range[0]) &
+            (df_winners_all["Year"] <= selected_year_range[1])
+        ]
+        # -----------------------------------------------------------------
+
+        # Debug helper: lets you confirm whether the API actually returned the
+        # full dataset or something suspiciously small.
+        st.caption(f"Fetched {len(prizes_data)} prize record(s); {len(df_winners)} laureate entries match your current filters.")
+
+        # Section 3: Visualizations
+        st.markdown(f"### 📊 Analysis for: **{selected_category_name}**")
+
+        if df_winners.empty:
+            st.warning("⚠️ No data matches the current Gender / Time Period filters. Try widening them in the sidebar.")
+        elif selected_code == "all":
+            # The category comparison chart only makes sense when we actually
+            # have more than one category to compare -- which is only the case
+            # in "All Categories" mode. Filtering to a single category first,
+            # then charting "categories", would just draw one lonely bar.
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.subheader("1. Winners by Decade (Chronological)")
+                decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
+                decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
+                decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
+                st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
+
+            with col2:
+                st.subheader("2. Winners Spread Across Categories")
+                category_counts = df_winners.groupby("Category").size().reset_index(name="Total Winners")
+                category_counts = category_counts.sort_values(by="Total Winners", ascending=False)
+                st.bar_chart(data=category_counts, x="Category", y="Total Winners", use_container_width=True)
+                st.caption(f"Showing category totals for **{selected_year_range[0]}–{selected_year_range[1]}**.")
+        else:
             st.subheader("1. Winners by Decade (Chronological)")
             decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
             decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
             decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
             st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
+            st.caption(
+                f"Category comparison is hidden here because you've filtered to **{selected_category_name}** only "
+                "— switch to 'All Categories' in the sidebar to compare across fields."
+            )
 
-        with col2:
-            st.subheader("2. Winners Spread Across Categories")
-            category_counts = df_winners.groupby("Category").size().reset_index(name="Total Winners")
-            category_counts = category_counts.sort_values(by="Total Winners", ascending=False)
-            st.bar_chart(data=category_counts, x="Category", y="Total Winners", use_container_width=True)
-    else:
-        st.subheader("1. Winners by Decade (Chronological)")
-        decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
-        decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
-        decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
-        st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
-        st.caption(
-            f"Category comparison is hidden here because you've filtered to **{selected_category_name}** only "
-            "— switch to 'All Categories' in the sidebar to compare across fields."
-        )
+        if not df_winners.empty:
+            # Line Chart: Year-by-Year Timeline Progression
+            st.subheader("📈 Timeline: Winner Volume Over Time (Year-by-Year)")
+            yearly_counts = df_winners.groupby("Year").size().reset_index(name="Winners")
+            yearly_counts = yearly_counts.sort_values(by="Year", ascending=True)
+            st.line_chart(data=yearly_counts, x="Year", y="Winners", use_container_width=True)
 
-    # Line Chart: Year-by-Year Timeline Progression
-    st.subheader("📈 Timeline: Winner Volume Over Time (Year-by-Year)")
-    yearly_counts = df_winners.groupby("Year").size().reset_index(name="Winners")
-    yearly_counts = yearly_counts.sort_values(by="Year", ascending=True)
+        # Section 4: Explanation & Limitations
+        exp_col1, exp_col2 = st.columns(2)
 
-    st.line_chart(data=yearly_counts, x="Year", y="Winners", use_container_width=True)
+        with exp_col1:
+            st.info("""
+            **💡 What these visualizations show:**  
+            - **Decade & Line Charts:** Show historical progression. Notice the increase in winners sharing prizes in modern decades, along with drops during World War I and World War II.
+            - **Category Distribution:** Displays the total recipient counts. Economic Sciences has fewer total laureates because it was added later in 1969.
+            - **Gender / Time Period filters:** Narrow every chart above down to a specific gender or award-year range.
+            """)
 
-    # Section 4: Explanation & Limitations
-    exp_col1, exp_col2 = st.columns(2)
+        with exp_col2:
+            st.warning("""
+            **⚠️ Data Limitations:**  
+            - World Wars (1914–1918 and 1939–1945) caused Nobel Prizes to be canceled in some years, resulting in temporary zeroes in timeline data.
+            - The official [Nobel Prize API](https://www.nobelprize.org/about/developer-zone-2/) caps single request sizes; the app pages through results to retrieve all available historical prizes.
+            - Gender is only meaningful for individual laureates; organizations (e.g. the Red Cross, UN agencies) are labeled separately, and any missing gender value is labeled "Unknown" rather than guessed at.
+            """)
 
-    with exp_col1:
-        st.info("""
-        **💡 What these visualizations show:**  
-        - **Decade & Line Charts:** Show historical progression. Notice the increase in winners sharing prizes in modern decades, along with drops during World War I and World War II.
-        - **Category Distribution:** Displays the total recipient counts. Economic Sciences has fewer total laureates because it was added later in 1969.
-        """)
-
-    with exp_col2:
-        st.warning("""
-        **⚠️ Data Limitations:**  
-        - World Wars (1914–1918 and 1939–1945) caused Nobel Prizes to be canceled in some years, resulting in temporary zeroes in timeline data.
-        - The official [Nobel Prize API](https://www.nobelprize.org/about/developer-zone-2/) caps single request sizes; parameters are set to retrieve all available historical prizes.
-        """)
-
-    # Section 5: Inspect Cleaned Data Table
-    with st.expander("🔍 View Raw Cleaned Data"):
-        st.dataframe(df, use_container_width=True)
+        # Section 5: Inspect Cleaned Data Table
+        with st.expander("🔍 View Raw Cleaned Data"):
+            st.dataframe(df, use_container_width=True)
