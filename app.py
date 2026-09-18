@@ -2,44 +2,21 @@ import streamlit as st
 import requests
 import pandas as pd
 
-# ---------------------------------------------------------
-# Page Configuration
-# ---------------------------------------------------------
+# Set up the basic page layout and title
 st.set_page_config(page_title="Nobel Prize Trends", page_icon="🏅", layout="wide")
 
 st.title("🏅 Nobel Prize Data & Trends")
 st.subheader("Group Assignment: From Data to App")
 
-# ---------------------------------------------------------
-# 1. Target Audience & Issue
-# ---------------------------------------------------------
+# Section 1: Explain the target audience, why it matters, and the question asked
 with st.expander("📌 Project Context: Target Audience & Question", expanded=True):
     st.markdown("""
-    * **Target Audience:** High school students, educators, and science enthusiasts interested in the history of scientific and societal achievements.
-    * **Why it matters:** Understanding how Nobel Prizes have been awarded across different decades highlights trends in academic research and global peace efforts over time.
+    * **Target Audience:** High school students, educators, and science history enthusiasts.
+    * **Why it matters:** Understanding how Nobel Prizes are awarded across different decades highlights scientific trends over time.
     * **Research Question:** How has the distribution of Nobel Prizes evolved across decades for a specific category?
     """)
 
-# ---------------------------------------------------------
-# API Helper Function with Caching
-# ---------------------------------------------------------
-@st.cache_data(ttl=3600)
-def fetch_nobel_data(category_code):
-    """
-    Fetches Nobel Prize data from the public API for a given category.
-    """
-    url = f"https://api.nobelprize.org/2.1/nobelPrizes?nobelPrizeCategory={category_code}&limit=500"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("nobelPrizes", [])
-    except requests.exceptions.RequestException:
-        return None
-
-# ---------------------------------------------------------
-# 2. Interactive Controls
-# ---------------------------------------------------------
+# Sidebar control to let the user pick a category
 st.sidebar.header("Interactive Filters")
 
 categories = {
@@ -58,65 +35,76 @@ selected_category_name = st.sidebar.selectbox(
 
 selected_code = categories[selected_category_name]
 
-# ---------------------------------------------------------
-# Data Fetching & Error Handling
-# ---------------------------------------------------------
+# Function to fetch data from the API safely with browser headers
+@st.cache_data(ttl=3600)
+def fetch_nobel_data(category_code):
+    url = f"https://api.nobelprize.org/2.1/nobelPrizes?nobelPrizeCategory={category_code}&limit=500"
+    
+    # Headers make the API treat the Python script like a normal web browser request
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "application/json"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("nobelPrizes", [])
+    except requests.exceptions.RequestException:
+        return None
+
+# Fetch data for the category selected by the user
 prizes_data = fetch_nobel_data(selected_code)
 
+# Handle API errors or empty data gracefully
 if prizes_data is None:
-    st.error("⚠️ **API Unavailable:** Unable to fetch data from the Nobel Prize API. Please check your internet connection or try again later.")
+    st.error("⚠️ API Unavailable: Unable to fetch data from the Nobel Prize API. Please check your internet connection or try again later.")
 elif len(prizes_data) == 0:
-    st.warning("⚠️ **No Data Found:** The API returned an empty dataset for this selection.")
+    st.warning("⚠️ No Data Found: The API returned an empty dataset for this selection.")
 else:
-    # Transform JSON into a DataFrame
+    # Format raw API data into clean rows for analysis
     records = []
     for item in prizes_data:
         year = int(item.get("nobelPrizeYear", 0))
-        # Compute decade
+        # Calculate decade (e.g., 1984 becomes 1980s)
         decade = f"{(year // 10) * 10}s"
-        
-        laureates = item.get("laureates", [])
-        num_laureates = len(laureates)
         
         records.append({
             "Year": year,
             "Decade": decade,
-            "Laureate_Count": num_laureates,
             "Prize_Amount": item.get("prizeAmount", 0)
         })
 
+    # Create a pandas table/dataframe
     df = pd.DataFrame(records)
 
-    # ---------------------------------------------------------
-    # 3. Visualization
-    # ---------------------------------------------------------
+    # Section 3: Visualization
     st.markdown(f"### 📊 Total Nobel Prizes Awarded in **{selected_category_name}** by Decade")
     
-    # Aggregate data by decade
+    # Count how many prizes were given per decade
     decade_counts = df.groupby("Decade").size().reset_index(name="Total Prizes")
     decade_counts = decade_counts.sort_values(by="Decade")
 
-    # Interactive Streamlit Bar Chart
+    # Display an interactive bar chart in Streamlit
     st.bar_chart(data=decade_counts, x="Decade", y="Total Prizes", use_container_width=True)
 
-    # ---------------------------------------------------------
-    # 4. Explanation & Limitations
-    # ---------------------------------------------------------
+    # Section 4: Explanation & Limitations
     col1, col2 = st.columns(2)
     
     with col1:
         st.info("""
         **💡 What this visualization shows:**  
-        This chart tracks the number of Nobel Prizes awarded in the selected category across different decades. Drops in prizes during certain decades (e.g., the 1940s) typically reflect global disruptions like WWII.
+        This chart tracks the number of Nobel Prizes awarded in the selected category across different decades. Drops in prizes during certain decades (such as the 1940s) typically reflect major historical events like World War II.
         """)
 
     with col2:
         st.warning("""
         **⚠️ Data Limitations:**  
-        - The API limits returned results per query (capped at `limit=500`), meaning extremely old or recent records might require paginated API calls.
-        - Nobel Prizes were not awarded in every category in every year (notably during World Wars), creating natural gaps in the dataset.
+        - The API returns data capped at a limit per query, requiring multiple network calls to gather full historical archives.
+        - Nobel Prizes were cancelled or postponed in certain years, leaving natural data gaps in the timeline.
         """)
 
-    # Show raw data view option
+    # Option for the user to inspect raw tabular data
     with st.expander("🔍 View Raw API Data"):
         st.dataframe(df, use_container_width=True)
