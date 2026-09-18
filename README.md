@@ -55,7 +55,7 @@ https://apptestapibds-pvmuytpc7dz5dup4vvxasq.streamlit.app/
 
 ## Repository
 
-- Repository: [Add your GitHub repo link here]
+- Repository: https://github.com/Heinrichbraun/streamlit_test_api_bds
 
 
 ## AI tools used
