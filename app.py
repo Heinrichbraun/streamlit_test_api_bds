@@ -97,7 +97,12 @@ else:
         # it is never a key in the response JSON, so the old code always fell
         # back to 0 here and grouped every record into decade "0s".
         year = int(prize.get("awardYear", 0))
-        decade = (year // 10) * 10
+        # Align decade grouping to the same 1901-1910, 1911-1920, ... grid
+        # used by the "Quick Jump to a Decade" preset, instead of a plain
+        # year // 10 * 10 grouping (which would split e.g. 1971-1980 into
+        # two separate "1970s"/"1980s" buckets and look inconsistent with
+        # the preset the user just picked).
+        decade = 1901 + ((year - 1901) // 10) * 10 if year >= 1901 else (year // 10) * 10
         category_name = prize.get("category", {}).get("en", "Unknown Category")
 
         laureates = prize.get("laureates", [])
@@ -205,7 +210,7 @@ else:
 
             with stat3:
                 top_decade = df_winners["Decade"].value_counts().idxmax()
-                st.metric("Most Awarded Decade", f"{int(top_decade)}s")
+                st.metric("Most Awarded Decade", f"{int(top_decade)}–{int(top_decade) + 9}")
 
             # CSV download of exactly what's currently filtered/shown
             csv_bytes = df_winners.to_csv(index=False).encode("utf-8")
@@ -232,7 +237,14 @@ else:
                 st.subheader("1. Winners by Decade (Chronological)")
                 decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
                 decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
-                decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
+                # Clip the displayed label to the data's actual bounds so the
+                # final, partial decade reads e.g. "2021–2025" (matching the
+                # Quick Jump preset) instead of a misleading "2021–2030".
+                decade_counts["Decade Label"] = (
+                    decade_counts["Decade"].clip(lower=min_year).astype(str)
+                    + "–"
+                    + (decade_counts["Decade"] + 9).clip(upper=max_year).astype(str)
+                )
                 st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
 
             with col2:
@@ -245,7 +257,11 @@ else:
             st.subheader("1. Winners by Decade (Chronological)")
             decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
             decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
-            decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
+            decade_counts["Decade Label"] = (
+                decade_counts["Decade"].clip(lower=min_year).astype(str)
+                + "–"
+                + (decade_counts["Decade"] + 9).clip(upper=max_year).astype(str)
+            )
             st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
             st.caption(
                 f"Category comparison is hidden here because you've filtered to **{selected_category_name}** only "
