@@ -36,25 +36,50 @@ selected_category_name = st.sidebar.selectbox(
 
 selected_code = categories[selected_category_name]
 
-# Helper function to fetch data directly from the official Nobel Prize API
+# Helper function to fetch data directly from the official Nobel Prize API.
+# NOTE: this paginates with offset/limit instead of trusting a single large
+# "limit" value. Some public APIs silently cap how many records they return
+# per request even if you ask for more (e.g. capping at 25 or 100 despite a
+# limit=1000 param) -- looping until a page comes back short protects us from
+# quietly ending up with a tiny, misleading slice of the data.
 @st.cache_data(ttl=3600)
 def fetch_nobel_data(category_code):
-    if category_code == "all":
-        url = "https://api.nobelprize.org/2.1/nobelPrizes?limit=1000"
-    else:
-        url = f"https://api.nobelprize.org/2.1/nobelPrizes?nobelPrizeCategory={category_code}&limit=500"
-        
+    base_url = "https://api.nobelprize.org/2.1/nobelPrizes"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Accept": "application/json"
     }
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.json().get("nobelPrizes", [])
-    except requests.exceptions.RequestException:
-        return None
+
+    page_size = 100
+    offset = 0
+    max_records = 2000  # safety cap so a bug can't loop forever
+    all_prizes = []
+
+    while offset < max_records:
+        params = {"limit": page_size, "offset": offset}
+        if category_code != "all":
+            params["nobelPrizeCategory"] = category_code
+
+        try:
+            response = requests.get(base_url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            batch = response.json().get("nobelPrizes", [])
+        except requests.exceptions.RequestException:
+            # If even the very first request fails, there is no data at all.
+            # If a later page fails, keep whatever we already gathered.
+            return None if offset == 0 else all_prizes
+
+        if not batch:
+            break
+
+        all_prizes.extend(batch)
+
+        if len(batch) < page_size:
+            break  # last page was shorter than requested -> no more data
+
+        offset += page_size
+
+    return all_prizes
 
 prizes_data = fetch_nobel_data(selected_code)
 
@@ -67,12 +92,16 @@ else:
     # Extract records cleanly
     records = []
     for prize in prizes_data:
-        year = int(prize.get("nobelPrizeYear", 0))
+        # FIX: the API returns the year under "awardYear", not "nobelPrizeYear".
+        # "nobelPrizeYear" is only the query-parameter name used for filtering,
+        # it is never a key in the response JSON, so the old code always fell
+        # back to 0 here and grouped every record into decade "0s".
+        year = int(prize.get("awardYear", 0))
         decade = (year // 10) * 10
         category_name = prize.get("category", {}).get("en", "Unknown Category")
-        
+
         laureates = prize.get("laureates", [])
-        
+
         if laureates:
             for laureate in laureates:
                 name = laureate.get("knownName", {}).get("en") or laureate.get("orgName", {}).get("en") or "Unknown Winner"
@@ -93,30 +122,45 @@ else:
     # Create main DataFrame
     df = pd.DataFrame(records)
 
-    # Filter out unawarded entries for clean counts
-    df_winners = df[df["Winner"] != "Not Awarded"]
+    # Filter out unawarded entries and invalid years for clean counts
+    df_winners = df[(df["Winner"] != "Not Awarded") & (df["Year"] > 0)]
+
+    # Debug helper: lets you confirm whether the API actually returned the
+    # full dataset or something suspiciously small.
+    st.caption(f"Fetched {len(prizes_data)} prize record(s) covering {df_winners['Winner'].shape[0]} laureate entries.")
 
     # Section 3: Visualizations
     st.markdown(f"### 📊 Analysis for: **{selected_category_name}**")
 
-    col1, col2 = st.columns(2)
+    if selected_code == "all":
+        # The category comparison chart only makes sense when we actually
+        # have more than one category to compare -- which is only the case
+        # in "All Categories" mode. Filtering to a single category first,
+        # then charting "categories", would just draw one lonely bar.
+        col1, col2 = st.columns(2)
 
-    with col1:
+        with col1:
+            st.subheader("1. Winners by Decade (Chronological)")
+            decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
+            decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
+            decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
+            st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
+
+        with col2:
+            st.subheader("2. Winners Spread Across Categories")
+            category_counts = df_winners.groupby("Category").size().reset_index(name="Total Winners")
+            category_counts = category_counts.sort_values(by="Total Winners", ascending=False)
+            st.bar_chart(data=category_counts, x="Category", y="Total Winners", use_container_width=True)
+    else:
         st.subheader("1. Winners by Decade (Chronological)")
-        # Aggregate and sort decades numerically
         decade_counts = df_winners.groupby("Decade").size().reset_index(name="Total Winners")
         decade_counts = decade_counts.sort_values(by="Decade", ascending=True)
         decade_counts["Decade Label"] = decade_counts["Decade"].astype(str) + "s"
-        
         st.bar_chart(data=decade_counts, x="Decade Label", y="Total Winners", use_container_width=True)
-
-    with col2:
-        st.subheader("2. Winners Spread Across Categories")
-        # Category breakdown chart
-        category_counts = df_winners.groupby("Category").size().reset_index(name="Total Winners")
-        category_counts = category_counts.sort_values(by="Total Winners", ascending=False)
-        
-        st.bar_chart(data=category_counts, x="Category", y="Total Winners", use_container_width=True)
+        st.caption(
+            f"Category comparison is hidden here because you've filtered to **{selected_category_name}** only "
+            "— switch to 'All Categories' in the sidebar to compare across fields."
+        )
 
     # Line Chart: Year-by-Year Timeline Progression
     st.subheader("📈 Timeline: Winner Volume Over Time (Year-by-Year)")
@@ -127,7 +171,7 @@ else:
 
     # Section 4: Explanation & Limitations
     exp_col1, exp_col2 = st.columns(2)
-    
+
     with exp_col1:
         st.info("""
         **💡 What these visualizations show:**  
