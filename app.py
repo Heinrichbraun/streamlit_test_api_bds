@@ -134,15 +134,52 @@ else:
 
         min_year = int(df_winners_all["Year"].min())
         max_year = int(df_winners_all["Year"].max())
+
         if min_year == max_year:
             selected_year_range = (min_year, max_year)
             st.sidebar.caption(f"Only one award year ({min_year}) available for this selection.")
         else:
+            # Quick-jump decade presets aligned to the standard Nobel decade
+            # grid (1901-1910, 1911-1920, ...), clipped to whatever years are
+            # actually available for the currently selected category (e.g.
+            # Economic Sciences only goes back to the late 1960s).
+            presets = []
+            grid_start = 1901
+            start = min_year - ((min_year - grid_start) % 10)
+            while start <= max_year:
+                end = start + 9
+                clipped_start = max(start, min_year)
+                clipped_end = min(end, max_year)
+                if clipped_start <= clipped_end:
+                    presets.append((f"{clipped_start}–{clipped_end}", (clipped_start, clipped_end)))
+                start += 10
+
+            preset_map = dict(presets)
+            # Keyed per category so switching categories doesn't leave a
+            # stale year range that falls outside the new category's bounds.
+            slider_key = f"year_range_{selected_code}"
+            quick_key = f"quick_pick_{selected_code}"
+
+            def apply_preset():
+                picked = st.session_state[quick_key]
+                if picked in preset_map:
+                    st.session_state[slider_key] = preset_map[picked]
+
+            st.sidebar.selectbox(
+                "Quick Jump to a Decade",
+                options=["Custom / All Years"] + [label for label, _ in presets],
+                key=quick_key,
+                on_change=apply_preset
+            )
+
+            if slider_key not in st.session_state:
+                st.session_state[slider_key] = (min_year, max_year)
+
             selected_year_range = st.sidebar.slider(
                 "Filter by Time Period (Award Year)",
                 min_value=min_year,
                 max_value=max_year,
-                value=(min_year, max_year)
+                key=slider_key
             )
 
         df_winners = df_winners_all[
