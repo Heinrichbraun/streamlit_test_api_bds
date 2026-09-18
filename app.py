@@ -104,38 +104,19 @@ else:
 
         if laureates:
             for laureate in laureates:
-                is_org = bool(laureate.get("orgName"))
                 name = laureate.get("knownName", {}).get("en") or laureate.get("orgName", {}).get("en") or "Unknown Winner"
-
-                # Gender only applies to individual people. Organisations (e.g.
-                # the Red Cross, UN agencies) are labeled separately, and any
-                # person record missing a gender value is labeled "Unknown"
-                # rather than guessed at.
-                if is_org:
-                    gender_label = "Organization"
-                else:
-                    gender_raw = (laureate.get("gender") or "").strip().lower()
-                    if gender_raw == "male":
-                        gender_label = "Male"
-                    elif gender_raw == "female":
-                        gender_label = "Female"
-                    else:
-                        gender_label = "Unknown"
-
                 records.append({
                     "Year": year,
                     "Decade": decade,
                     "Category": category_name,
-                    "Winner": name,
-                    "Gender": gender_label
+                    "Winner": name
                 })
         else:
             records.append({
                 "Year": year,
                 "Decade": decade,
                 "Category": category_name,
-                "Winner": "Not Awarded",
-                "Gender": "N/A"
+                "Winner": "Not Awarded"
             })
 
     # Create main DataFrame
@@ -148,15 +129,8 @@ else:
     if df_winners_all.empty:
         st.warning("⚠️ No laureate data available to filter or chart for this selection.")
     else:
-        # --- New filters: Gender and Time Period -----------------------------
+        # --- New filter: Time Period ------------------------------------
         st.sidebar.subheader("Refine Results")
-
-        available_genders = sorted(df_winners_all["Gender"].unique().tolist())
-        selected_genders = st.sidebar.multiselect(
-            "Filter by Gender",
-            options=available_genders,
-            default=available_genders
-        )
 
         min_year = int(df_winners_all["Year"].min())
         max_year = int(df_winners_all["Year"].max())
@@ -172,7 +146,6 @@ else:
             )
 
         df_winners = df_winners_all[
-            (df_winners_all["Gender"].isin(selected_genders)) &
             (df_winners_all["Year"] >= selected_year_range[0]) &
             (df_winners_all["Year"] <= selected_year_range[1])
         ]
@@ -186,7 +159,7 @@ else:
         st.markdown(f"### 📊 Analysis for: **{selected_category_name}**")
 
         if df_winners.empty:
-            st.warning("⚠️ No data matches the current Gender / Time Period filters. Try widening them in the sidebar.")
+            st.warning("⚠️ No data matches the current Time Period filter. Try widening it in the sidebar.")
         elif selected_code == "all":
             # The category comparison chart only makes sense when we actually
             # have more than one category to compare -- which is only the case
@@ -233,7 +206,7 @@ else:
             **💡 What these visualizations show:**  
             - **Decade & Line Charts:** Show historical progression. Notice the increase in winners sharing prizes in modern decades, along with drops during World War I and World War II.
             - **Category Distribution:** Displays the total recipient counts. Economic Sciences has fewer total laureates because it was added later in 1969.
-            - **Gender / Time Period filters:** Narrow every chart above down to a specific gender or award-year range.
+            - **Time Period filter:** Narrow every chart above down to a specific award-year range.
             """)
 
         with exp_col2:
@@ -241,7 +214,6 @@ else:
             **⚠️ Data Limitations:**  
             - World Wars (1914–1918 and 1939–1945) caused Nobel Prizes to be canceled in some years, resulting in temporary zeroes in timeline data.
             - The official [Nobel Prize API](https://www.nobelprize.org/about/developer-zone-2/) caps single request sizes; the app pages through results to retrieve all available historical prizes.
-            - Gender is only meaningful for individual laureates; organizations (e.g. the Red Cross, UN agencies) are labeled separately, and any missing gender value is labeled "Unknown" rather than guessed at.
             """)
 
         # Section 5: Inspect Cleaned Data Table
