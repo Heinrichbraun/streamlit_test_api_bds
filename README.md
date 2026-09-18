@@ -66,7 +66,9 @@ Claude (Anthropic) was used to:
 - Add the time-period filter and rework the category chart so it only renders when it's meaningful (i.e. when comparing across categories)
 - Add the repeat-winners table, summary stat cards, and CSV export
 - Add the "Quick Jump to a Decade" preset dropdown and align decade grouping/labels to the standard Nobel decade grid
-
+- To draft parts of this readme
+- Gemeni used as checker to make sure there wern't big problematic areas.
+  
 ## Notes
 
 - No API key or credentials are required or stored anywhere in this repository.
